@@ -24,6 +24,11 @@ class TripletNode(BaseModel):
     uuid: str = Field(..., description='Stable uuid for the node (idempotent re-sync)')
     name: str = Field(..., description='Entity name (node name + resolution key)')
     summary: str = Field(default='', description='Optional node summary')
+    labels: list[str] = Field(
+        default_factory=list,
+        description='Entity type labels (e.g. ["Person"]). Tags the node as a '
+        'registered entity_type so its stamped attributes survive episode ingest.',
+    )
     attributes: dict = Field(default_factory=dict, description='Optional node attributes')
 
 

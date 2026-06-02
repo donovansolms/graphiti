@@ -18,6 +18,7 @@ from graph_service.dto import (
     Result,
     TextEpisode,
 )
+from graph_service.entity_types import BUTLER_ENTITY_TYPES
 from graph_service.zep_graphiti import ZepGraphitiDep
 
 
@@ -73,6 +74,7 @@ async def add_messages(
             reference_time=m.timestamp,
             source=EpisodeType.message,
             source_description=m.source_description,
+            entity_types=BUTLER_ENTITY_TYPES,
         )
 
     for m in request.messages:
@@ -101,6 +103,7 @@ async def add_text_episodes(
             reference_time=t.timestamp,
             source=EpisodeType.text,
             source_description=t.source_description,
+            entity_types=BUTLER_ENTITY_TYPES,
         )
 
     for t in request.episodes:
@@ -133,11 +136,18 @@ async def add_triplet(
     each node against existing entities, so e.g. a contact merges with the
     same entity already extracted from messages."""
 
+    # "Entity" is graphiti's base label; any caller-supplied label (e.g.
+    # "Person") is what makes this node a registered entity_type, so its
+    # stamped attributes (subject_id/contact_id) survive later episode ingest.
+    def _labels(custom: list[str]) -> list[str]:
+        return list(dict.fromkeys(['Entity', *custom]))
+
     now = utc_now()
     source = EntityNode(
         uuid=request.source.uuid,
         name=request.source.name,
         group_id=request.group_id,
+        labels=_labels(request.source.labels),
         summary=request.source.summary,
         attributes=request.source.attributes,
     )
@@ -145,6 +155,7 @@ async def add_triplet(
         uuid=request.target.uuid,
         name=request.target.name,
         group_id=request.group_id,
+        labels=_labels(request.target.labels),
         summary=request.target.summary,
         attributes=request.target.attributes,
     )
