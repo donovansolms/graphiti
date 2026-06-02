@@ -39,32 +39,31 @@ RUN groupadd -r app && useradd -r -d /app -g app app
 WORKDIR /app
 COPY ./server/pyproject.toml ./server/README.md ./server/uv.lock ./
 COPY ./server/graph_service ./graph_service
+# Copy the LOCAL graphiti_core (this fork) into the image so the container runs
+# OUR graphiti-core (e.g. 0.29.1 with the forward-ported core improvements) — not
+# the older version the server lockfile pins from PyPI.
+COPY ./pyproject.toml ./README.md /graphiti-core/
+COPY ./graphiti_core /graphiti-core/graphiti_core
 
-# Install server dependencies (without graphiti-core from lockfile)
-# Then install graphiti-core from PyPI at the desired version
-# This prevents the stale lockfile from pinning an old graphiti-core version
+# Install server deps from the lockfile, then install the LOCAL graphiti-core
+# INTO THE PROJECT VENV (/app/.venv) — the upstream Dockerfile installs it with
+# `--system`, but the server runs via `uv run`, which uses /app/.venv and never
+# /usr/local. Targeting the venv explicitly is what actually makes the fork's
+# core (not the lockfile's PyPI pin) the code the server imports.
 ARG INSTALL_FALKORDB=false
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev && \
-    if [ -n "$GRAPHITI_VERSION" ]; then \
-        if [ "$INSTALL_FALKORDB" = "true" ]; then \
-            uv pip install --system --upgrade "graphiti-core[falkordb]==$GRAPHITI_VERSION"; \
-        else \
-            uv pip install --system --upgrade "graphiti-core==$GRAPHITI_VERSION"; \
-        fi; \
-    else \
-        if [ "$INSTALL_FALKORDB" = "true" ]; then \
-            uv pip install --system --upgrade "graphiti-core[falkordb]"; \
-        else \
-            uv pip install --system --upgrade graphiti-core; \
-        fi; \
-    fi
+    uv pip install --python /app/.venv/bin/python /graphiti-core
 
 # Change ownership to app user
 RUN chown -R app:app /app
 
-# Set environment variables
+# Set environment variables.
+# UV_NO_SYNC=1 stops `uv run` (the CMD) from re-syncing /app/.venv to the
+# lockfile at container startup — without it, uv would revert our build-time
+# local graphiti-core (0.29.1) back to the lockfile's PyPI pin (0.28.2).
 ENV PYTHONUNBUFFERED=1 \
+    UV_NO_SYNC=1 \
     PATH="/app/.venv/bin:$PATH"
 
 # Switch to non-root user

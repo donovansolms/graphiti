@@ -26,3 +26,21 @@ class Message(BaseModel):
     source_description: str = Field(
         default='', description='The description of the source of the message'
     )
+
+
+class TextEpisode(BaseModel):
+    """A plain-text episode — no actor/role prefix is added to the body.
+    Use this when the body is already a narrative sentence and you don't
+    want the chat-message extractor's "{role}(role_type):" prefix to leak
+    into entity extraction."""
+
+    content: str = Field(..., description='The plain-text body of the episode')
+    uuid: str | None = Field(default=None, description='Episodic node uuid (optional)')
+    name: str = Field(
+        default='',
+        description='Human-readable label for the episode (e.g. "Message from Sarah", "Missed call from Mom")',
+    )
+    timestamp: datetime = Field(default_factory=utc_now, description='Reference time of the episode')
+    source_description: str = Field(
+        default='', description='Description of the source of the episode'
+    )
