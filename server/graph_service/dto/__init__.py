@@ -5,7 +5,14 @@ from .ingest import (
     AddTextEpisodesRequest,
     AddTripletRequest,
 )
-from .retrieve import FactResult, GetMemoryRequest, GetMemoryResponse, SearchQuery, SearchResults
+from .retrieve import (
+    FactResult,
+    GetMemoryRequest,
+    GetMemoryResponse,
+    NodeResult,
+    SearchQuery,
+    SearchResults,
+)
 
 __all__ = [
     'SearchQuery',
@@ -17,6 +24,7 @@ __all__ = [
     'AddTripletRequest',
     'SearchResults',
     'FactResult',
+    'NodeResult',
     'Result',
     'GetMemoryRequest',
     'GetMemoryResponse',

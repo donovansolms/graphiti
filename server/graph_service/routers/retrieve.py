@@ -9,7 +9,11 @@ from graph_service.dto import (
     SearchQuery,
     SearchResults,
 )
-from graph_service.zep_graphiti import ZepGraphitiDep, get_fact_result_from_edge
+from graph_service.zep_graphiti import (
+    ZepGraphitiDep,
+    get_fact_result_from_edge,
+    hydrate_nodes_for_edges,
+)
 
 router = APIRouter()
 
@@ -21,7 +25,8 @@ async def search(query: SearchQuery, graphiti: ZepGraphitiDep):
         query=query.query,
         num_results=query.max_facts,
     )
-    facts = [get_fact_result_from_edge(edge) for edge in relevant_edges]
+    nodes = await hydrate_nodes_for_edges(graphiti, relevant_edges)
+    facts = [get_fact_result_from_edge(edge, nodes) for edge in relevant_edges]
     return SearchResults(
         facts=facts,
     )
@@ -30,7 +35,8 @@ async def search(query: SearchQuery, graphiti: ZepGraphitiDep):
 @router.get('/entity-edge/{uuid}', status_code=status.HTTP_200_OK)
 async def get_entity_edge(uuid: str, graphiti: ZepGraphitiDep):
     entity_edge = await graphiti.get_entity_edge(uuid)
-    return get_fact_result_from_edge(entity_edge)
+    nodes = await hydrate_nodes_for_edges(graphiti, [entity_edge])
+    return get_fact_result_from_edge(entity_edge, nodes)
 
 
 @router.get('/episodes/{group_id}', status_code=status.HTTP_200_OK)
@@ -52,7 +58,8 @@ async def get_memory(
         query=combined_query,
         num_results=request.max_facts,
     )
-    facts = [get_fact_result_from_edge(edge) for edge in result]
+    nodes = await hydrate_nodes_for_edges(graphiti, result)
+    facts = [get_fact_result_from_edge(edge, nodes) for edge in result]
     return GetMemoryResponse(facts=facts)
 
 

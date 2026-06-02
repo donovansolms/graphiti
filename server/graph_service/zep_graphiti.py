@@ -9,7 +9,7 @@ from graphiti_core.llm_client import LLMClient  # type: ignore
 from graphiti_core.nodes import EntityNode, EpisodicNode  # type: ignore
 
 from graph_service.config import ZepEnvDep
-from graph_service.dto import FactResult
+from graph_service.dto import FactResult, NodeResult
 
 logger = logging.getLogger(__name__)
 
@@ -99,16 +99,51 @@ async def initialize_graphiti(settings: ZepEnvDep):
     await client.build_indices_and_constraints()
 
 
-def get_fact_result_from_edge(edge: EntityEdge):
+def get_fact_result_from_edge(edge: EntityEdge, nodes: dict[str, EntityNode] | None = None):
+    """Project an edge to a FactResult. When `nodes` (a uuid->EntityNode map,
+    e.g. from hydrate_nodes_for_edges) is supplied, the source/target entities
+    are embedded so the result is self-describing; otherwise only the node uuids
+    are returned and the *_node objects stay null."""
+    nodes = nodes or {}
+
+    def node_result(uuid: str | None) -> NodeResult | None:
+        n = nodes.get(uuid) if uuid else None
+        if n is None:
+            return None
+        return NodeResult(
+            uuid=n.uuid,
+            name=n.name,
+            labels=list(n.labels or []),
+            attributes=n.attributes or {},
+        )
+
     return FactResult(
         uuid=edge.uuid,
         name=edge.name,
         fact=edge.fact,
+        group_id=edge.group_id,
+        source_node_uuid=edge.source_node_uuid,
+        target_node_uuid=edge.target_node_uuid,
+        source_node=node_result(edge.source_node_uuid),
+        target_node=node_result(edge.target_node_uuid),
         valid_at=edge.valid_at,
         invalid_at=edge.invalid_at,
         created_at=edge.created_at,
         expired_at=edge.expired_at,
     )
+
+
+async def hydrate_nodes_for_edges(
+    graphiti: ZepGraphiti, edges: list[EntityEdge]
+) -> dict[str, EntityNode]:
+    """Batch-fetch the entity nodes referenced by a set of edges, returning a
+    uuid->node map. One query regardless of edge count; lets fact results carry
+    node identity (name + stamped attributes) without a per-fact lookup."""
+    uuids = list({u for e in edges for u in (e.source_node_uuid, e.target_node_uuid) if u})
+    if not uuids:
+        return {}
+    fetched = await EntityNode.get_by_uuids(graphiti.driver, uuids)
+    return {n.uuid: n for n in fetched}
 
 
 ZepGraphitiDep = Annotated[ZepGraphiti, Depends(get_graphiti)]
