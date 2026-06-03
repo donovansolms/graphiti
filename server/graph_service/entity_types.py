@@ -36,6 +36,12 @@ node attribute on `/add-triplet` — never as a declared field.
 from pydantic import BaseModel, Field
 
 
+# Every type below carries ONLY an inert `placeholder` field. The Butler FK it
+# maps back to (`subject_id`, and `contact_id` for Person) rides as a NON-schema
+# node attribute set by Butler via /add-triplet or /entity-node — never declared
+# here. See the module docstring for why.
+
+
 class Person(BaseModel):
     """A person — a Butler user or someone in their life (family, friends,
     colleagues, contacts). Use for any named human being."""
@@ -50,8 +56,32 @@ class Person(BaseModel):
     )
 
 
-# Passed to graphiti on every episode ingest + used to label triplet nodes.
+class Place(BaseModel):
+    """A place — a property or named location: the household's own home, or an
+    external place it knows about (a friend's home, a shop, a venue). Maps back
+    to a Butler `place__…` subject via the non-schema `subject_id` attribute."""
+
+    placeholder: str | None = Field(
+        default=None,
+        description='Unused internal placeholder — always leave this null.',
+    )
+
+
+class Area(BaseModel):
+    """An area — a physical space inside a place: a room (bedroom, kitchen) or an
+    outdoor space (driveway, garden). Maps back to a Butler `area__…` subject via
+    the non-schema `subject_id` attribute."""
+
+    placeholder: str | None = Field(
+        default=None,
+        description='Unused internal placeholder — always leave this null.',
+    )
+
+
+# Passed to graphiti on every episode ingest + used to label triplet/seed nodes.
 # The single source of truth for Butler's graph ontology types.
 BUTLER_ENTITY_TYPES: dict[str, type[BaseModel]] = {
     'Person': Person,
+    'Place': Place,
+    'Area': Area,
 }
