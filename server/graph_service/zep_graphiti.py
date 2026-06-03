@@ -18,12 +18,26 @@ class ZepGraphiti(Graphiti):
     def __init__(self, uri: str, user: str, password: str, llm_client: LLMClient | None = None):
         super().__init__(uri, user, password, llm_client)
 
-    async def save_entity_node(self, name: str, uuid: str, group_id: str, summary: str = ''):
+    async def save_entity_node(
+        self,
+        name: str,
+        uuid: str,
+        group_id: str,
+        summary: str = '',
+        labels: list[str] | None = None,
+        attributes: dict | None = None,
+    ):
+        # "Entity" is graphiti's base label; any caller-supplied label (e.g.
+        # "Place"/"Area") registers the node as an entity_type so its stamped FK
+        # attributes survive later episode ingest (untyped nodes get reset to {}).
+        node_labels = list(dict.fromkeys(['Entity', *(labels or [])]))
         new_node = EntityNode(
             name=name,
             uuid=uuid,
             group_id=group_id,
             summary=summary,
+            labels=node_labels,
+            attributes=attributes or {},
         )
         await new_node.generate_name_embedding(self.embedder)
         await new_node.save(self.driver)

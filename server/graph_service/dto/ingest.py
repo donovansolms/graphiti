@@ -18,6 +18,17 @@ class AddEntityNodeRequest(BaseModel):
     group_id: str = Field(..., description='The group id of the node to add')
     name: str = Field(..., description='The name of the node to add')
     summary: str = Field(default='', description='The summary of the node to add')
+    labels: list[str] = Field(
+        default_factory=list,
+        description='Entity type labels (e.g. ["Place", "Area"]). Tags the node as a '
+        'registered entity_type so its stamped FK attributes survive later episode '
+        'ingest (untyped nodes get their attributes reset to {}).',
+    )
+    attributes: dict = Field(
+        default_factory=dict,
+        description='Plain node attributes, e.g. the Butler FK {"subject_id": "area__bedroom"}. '
+        'Must NOT be declared entity-type fields — the FK rides as a non-schema attribute.',
+    )
 
 
 class TripletNode(BaseModel):

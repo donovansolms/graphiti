@@ -122,6 +122,8 @@ async def add_entity_node(
         group_id=request.group_id,
         name=request.name,
         summary=request.summary,
+        labels=request.labels,
+        attributes=request.attributes,
     )
     return node
 
