@@ -169,6 +169,10 @@ async def add_triplet(
         created_at=now,
         name=request.edge.name,
         fact=request.edge.fact,
+        # Butler-supplied event time (when the relationship became true). When set,
+        # core add_triplet uses it as the episode reference and the edge skips LLM
+        # timestamp extraction, so the edge is dated by the event, not by ingest.
+        valid_at=request.edge.valid_at,
     )
     await graphiti.add_triplet(source, edge, target)
     return Result(message='Triplet added', success=True)

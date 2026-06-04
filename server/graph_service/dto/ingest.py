@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from graph_service.dto.common import Message, TextEpisode
@@ -47,6 +49,14 @@ class TripletEdge(BaseModel):
     name: str = Field(..., description='Relation type / edge name (e.g. FRIEND_OF)')
     fact: str = Field(..., description='Natural-language fact (embedded + searchable)')
     uuid: str | None = Field(default=None, description='Optional stable edge uuid')
+    valid_at: datetime | None = Field(
+        default=None,
+        description="When the relationship became true — Butler sets this to the source "
+        "envelope's event_time so a deterministic edge is dated by the event, not by ingest "
+        "time. When present it is used verbatim and the edge skips LLM timestamp extraction "
+        "(see _extract_edge_timestamps, which short-circuits when valid_at is already set). "
+        'When absent, graphiti falls back to utc_now() as before.',
+    )
 
 
 class AddTripletRequest(BaseModel):
