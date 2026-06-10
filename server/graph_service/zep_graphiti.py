@@ -1,14 +1,14 @@
 import logging
 from typing import Annotated
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from graphiti_core import Graphiti  # type: ignore
 from graphiti_core.edges import EntityEdge  # type: ignore
 from graphiti_core.errors import EdgeNotFoundError, GroupsEdgesNotFoundError, NodeNotFoundError
 from graphiti_core.llm_client import LLMClient  # type: ignore
 from graphiti_core.nodes import EntityNode, EpisodicNode  # type: ignore
 
-from graph_service.config import ZepEnvDep
+from graph_service.config import Settings
 from graph_service.dto import FactResult, NodeResult
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,21 @@ class ZepGraphiti(Graphiti):
             raise HTTPException(status_code=404, detail=e.message) from e
 
 
-async def get_graphiti(settings: ZepEnvDep):
+def build_graphiti(settings: Settings) -> ZepGraphiti:
+    """Construct the single ZepGraphiti for the whole app lifetime — one Neo4j
+    driver (one bounded connection pool) and one LLM/embedder client, shared by
+    every request.
+
+    This MUST be a singleton, not per-request. The old `get_graphiti` built a
+    fresh ZepGraphiti (and thus a fresh Neo4j driver) on every request and closed
+    it on teardown. But /text and /messages return 202 and defer the real work to
+    the AsyncWorker queue, so the request-scoped close() fired while the queued
+    job was still pending; the deferred add_episode then opened bolt connections
+    on an already-torn-down driver that nothing would ever close again. Under bulk
+    load (thousands of episodes queued at once, each pinning its own driver) those
+    orphaned Neo4j connections outran GC finalization and exhausted the process
+    file-descriptor limit — `socket.accept()` then failed and every request 500'd.
+    A single shared instance caps Neo4j connections at the pool size, forever."""
     client = ZepGraphiti(
         uri=settings.neo4j_uri,
         user=settings.neo4j_user,
@@ -97,20 +111,13 @@ async def get_graphiti(settings: ZepEnvDep):
         client.llm_client.config.api_key = settings.openai_api_key
     if settings.model_name is not None:
         client.llm_client.model = settings.model_name
-
-    try:
-        yield client
-    finally:
-        await client.close()
+    return client
 
 
-async def initialize_graphiti(settings: ZepEnvDep):
-    client = ZepGraphiti(
-        uri=settings.neo4j_uri,
-        user=settings.neo4j_user,
-        password=settings.neo4j_password,
-    )
-    await client.build_indices_and_constraints()
+async def get_graphiti(request: Request) -> ZepGraphiti:
+    # Return the shared app-lifetime instance built in the app lifespan
+    # (main.lifespan -> app.state.graphiti). Never per-request — see build_graphiti.
+    return request.app.state.graphiti
 
 
 def get_fact_result_from_edge(edge: EntityEdge, nodes: dict[str, EntityNode] | None = None):

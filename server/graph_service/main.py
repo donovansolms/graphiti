@@ -5,16 +5,22 @@ from fastapi.responses import JSONResponse
 
 from graph_service.config import get_settings
 from graph_service.routers import ingest, retrieve
-from graph_service.zep_graphiti import initialize_graphiti
+from graph_service.zep_graphiti import build_graphiti
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app: FastAPI):
     settings = get_settings()
-    await initialize_graphiti(settings)
-    yield
-    # Shutdown
-    # No need to close Graphiti here, as it's handled per-request
+    # One shared Graphiti for the whole process (see build_graphiti). Stored on
+    # app.state so the get_graphiti dependency hands the SAME instance to every
+    # request — no per-request driver, so Neo4j connections stay bounded.
+    graphiti = build_graphiti(settings)
+    await graphiti.build_indices_and_constraints()
+    app.state.graphiti = graphiti
+    try:
+        yield
+    finally:
+        await graphiti.close()
 
 
 app = FastAPI(lifespan=lifespan)
