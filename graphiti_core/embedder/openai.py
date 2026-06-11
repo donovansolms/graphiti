@@ -19,6 +19,8 @@ from collections.abc import Iterable
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 from openai.types import EmbeddingModel
 
+from graphiti_core.http_client import create_resilient_http_client
+
 from .client import EmbedderClient, EmbedderConfig
 
 DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small'
@@ -49,7 +51,11 @@ class OpenAIEmbedder(EmbedderClient):
         if client is not None:
             self.client = client
         else:
-            self.client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+            self.client = AsyncOpenAI(
+                api_key=config.api_key,
+                base_url=config.base_url,
+                http_client=create_resilient_http_client(),
+            )
 
     async def create(
         self, input_data: str | list[str] | Iterable[int] | Iterable[Iterable[int]]

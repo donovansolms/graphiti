@@ -20,6 +20,8 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel
 
+from graphiti_core.http_client import create_resilient_http_client
+
 from .config import DEFAULT_MAX_TOKENS, LLMConfig
 from .openai_base_client import DEFAULT_REASONING, DEFAULT_VERBOSITY, BaseOpenAIClient
 
@@ -58,7 +60,11 @@ class OpenAIClient(BaseOpenAIClient):
             config = LLMConfig()
 
         if client is None:
-            self.client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+            self.client = AsyncOpenAI(
+                api_key=config.api_key,
+                base_url=config.base_url,
+                http_client=create_resilient_http_client(),
+            )
         else:
             self.client = client
 

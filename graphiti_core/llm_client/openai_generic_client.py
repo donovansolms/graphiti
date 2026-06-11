@@ -24,6 +24,7 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel
 
+from ..http_client import create_resilient_http_client
 from ..prompts.models import Message
 from .client import LLMClient, get_extraction_language_instruction
 from .config import DEFAULT_MAX_TOKENS, LLMConfig, ModelSize
@@ -88,7 +89,11 @@ class OpenAIGenericClient(LLMClient):
         self.max_tokens = max_tokens
 
         if client is None:
-            self.client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+            self.client = AsyncOpenAI(
+                api_key=config.api_key,
+                base_url=config.base_url,
+                http_client=create_resilient_http_client(),
+            )
         else:
             self.client = client
 
