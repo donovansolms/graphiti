@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import os
 from contextlib import asynccontextmanager
 from functools import partial
 from uuid import uuid4
@@ -21,28 +23,72 @@ from graph_service.dto import (
 from graph_service.entity_types import BUTLER_ENTITY_TYPES
 from graph_service.zep_graphiti import ZepGraphitiDep
 
+logger = logging.getLogger(__name__)
+
+# Number of concurrent queue workers. Each drains the same queue, so this is the
+# max number of episodes processed in parallel.
+#
+# Default is 1 (serial) ON PURPOSE: add_episode is incremental and dedups
+# extracted entities/edges against the current graph, so two episodes for the
+# SAME group_id running concurrently can fail to see each other's writes and
+# create duplicate entities / miss edge invalidations. Our current workload uses
+# a single group_id, so raising this would corrupt dedup.
+#
+# Only raise WORKER_CONCURRENCY once ingestion is spread across many groups AND
+# the queue is sharded so each group_id is pinned to one worker (otherwise the
+# same-group race above reappears).
+WORKER_CONCURRENCY = int(os.getenv('WORKER_CONCURRENCY', 1))
+
 
 class AsyncWorker:
-    def __init__(self):
+    def __init__(self, concurrency: int = WORKER_CONCURRENCY):
         self.queue = asyncio.Queue()
-        self.task = None
+        self.concurrency = concurrency
+        self.tasks: list[asyncio.Task] = []
 
-    async def worker(self):
+    async def worker(self, worker_id: int):
         while True:
+            # Wait for the next job. A cancel here (shutdown while idle) is the
+            # only thing that should stop the worker.
             try:
-                print(f'Got a job: (size of remaining queue: {self.queue.qsize()})')
                 job = await self.queue.get()
-                await job()
             except asyncio.CancelledError:
                 break
 
+            try:
+                print(
+                    f'worker {worker_id} got a job: '
+                    f'(size of remaining queue: {self.queue.qsize()})'
+                )
+                await job()
+            except asyncio.CancelledError:
+                # Shutdown cancel landed while a job was running — stop the worker.
+                break
+            except Exception:
+                # CRITICAL: a failing job must never kill the worker. Previously
+                # the only handler was CancelledError, so any error raised by
+                # add_episode (e.g. an OpenAI 431/429, an LLM schema failure, a
+                # Neo4j blip) propagated out of worker() and the task died — the
+                # queue then filled forever while /text kept returning 202. Log
+                # and move on to the next job instead.
+                logger.exception('episode job failed; worker %s continuing', worker_id)
+
     async def start(self):
-        self.task = asyncio.create_task(self.worker())
+        # Defaults to a single worker (serial) — see WORKER_CONCURRENCY above for
+        # why same-group_id workloads must not run episodes in parallel.
+        self.tasks = [
+            asyncio.create_task(self.worker(i)) for i in range(max(1, self.concurrency))
+        ]
 
     async def stop(self):
-        if self.task:
-            self.task.cancel()
-            await self.task
+        for task in self.tasks:
+            task.cancel()
+        for task in self.tasks:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self.tasks = []
         while not self.queue.empty():
             self.queue.get_nowait()
 
