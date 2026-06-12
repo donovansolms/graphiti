@@ -4,6 +4,7 @@ from .ingest import (
     AddMessagesRequest,
     AddTextEpisodesRequest,
     AddTripletRequest,
+    QueueStatus,
 )
 from .retrieve import (
     FactResult,
@@ -22,6 +23,7 @@ __all__ = [
     'AddTextEpisodesRequest',
     'AddEntityNodeRequest',
     'AddTripletRequest',
+    'QueueStatus',
     'SearchResults',
     'FactResult',
     'NodeResult',

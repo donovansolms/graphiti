@@ -17,6 +17,7 @@ from graph_service.dto import (
     AddTextEpisodesRequest,
     AddTripletRequest,
     Message,
+    QueueStatus,
     Result,
     TextEpisode,
 )
@@ -45,6 +46,10 @@ class AsyncWorker:
         self.queue = asyncio.Queue()
         self.concurrency = concurrency
         self.tasks: list[asyncio.Task] = []
+        # Jobs currently being processed (pulled off the queue but not yet
+        # finished). queue.qsize() does NOT count these, so the GET /queue
+        # status endpoint needs this to know when work is truly drained.
+        self.active = 0
 
     async def worker(self, worker_id: int):
         while True:
@@ -55,6 +60,7 @@ class AsyncWorker:
             except asyncio.CancelledError:
                 break
 
+            self.active += 1
             try:
                 print(
                     f'worker {worker_id} got a job: '
@@ -63,6 +69,7 @@ class AsyncWorker:
                 await job()
             except asyncio.CancelledError:
                 # Shutdown cancel landed while a job was running — stop the worker.
+                # The finally below still runs before the break, balancing active.
                 break
             except Exception:
                 # CRITICAL: a failing job must never kill the worker. Previously
@@ -72,6 +79,10 @@ class AsyncWorker:
                 # queue then filled forever while /text kept returning 202. Log
                 # and move on to the next job instead.
                 logger.exception('episode job failed; worker %s continuing', worker_id)
+            finally:
+                # Exactly one decrement per job, on every exit path (success,
+                # failure, or cancel — finally runs before the break).
+                self.active -= 1
 
     async def start(self):
         # Defaults to a single worker (serial) — see WORKER_CONCURRENCY above for
@@ -104,6 +115,27 @@ async def lifespan(_: FastAPI):
 
 
 router = APIRouter(lifespan=lifespan)
+
+
+@router.get('/queue', status_code=status.HTTP_200_OK)
+async def queue_status() -> QueueStatus:
+    """Drain status of the async ingestion queue (/text, /messages).
+
+    Poll this and wait for `idle` (or `outstanding == 0`) to know all queued
+    episodes have finished. `queued` alone hits 0 while the last job is still
+    running — `in_flight` accounts for that — so don't treat queued==0 as done.
+    """
+    queued = async_worker.queue.qsize()
+    in_flight = async_worker.active
+    workers_alive = sum(not task.done() for task in async_worker.tasks)
+    return QueueStatus(
+        queued=queued,
+        in_flight=in_flight,
+        outstanding=queued + in_flight,
+        idle=(queued + in_flight) == 0,
+        workers=async_worker.concurrency,
+        workers_alive=workers_alive,
+    )
 
 
 @router.post('/messages', status_code=status.HTTP_202_ACCEPTED)

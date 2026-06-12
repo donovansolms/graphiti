@@ -64,3 +64,25 @@ class AddTripletRequest(BaseModel):
     source: TripletNode = Field(..., description='Source entity node')
     target: TripletNode = Field(..., description='Target entity node')
     edge: TripletEdge = Field(..., description='Relationship edge from source to target')
+
+
+class QueueStatus(BaseModel):
+    """Snapshot of the ingestion worker queue. Poll this to know when async
+    ingestion (/text, /messages) has fully drained: `idle` is True (equivalently
+    `outstanding == 0`) only once nothing is queued AND nothing is mid-flight."""
+
+    queued: int = Field(..., description='Jobs waiting in the queue (not yet picked up)')
+    in_flight: int = Field(..., description='Jobs currently being processed by a worker')
+    outstanding: int = Field(
+        ...,
+        description='queued + in_flight. 0 means fully drained. NOTE: queued alone '
+        'reaches 0 while the last (often longest) job is still running, so this is the '
+        'field to wait on, not queued.',
+    )
+    idle: bool = Field(..., description='True when outstanding == 0 (all work complete)')
+    workers: int = Field(..., description='Configured worker concurrency')
+    workers_alive: int = Field(
+        ...,
+        description='Worker tasks still running. If this is < workers while outstanding '
+        '> 0, a worker has died and the queue is stalled.',
+    )
