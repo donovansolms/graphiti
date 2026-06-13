@@ -7,6 +7,7 @@ from .ingest import (
     QueueStatus,
 )
 from .retrieve import (
+    EdgesByTimeWindowQuery,
     FactResult,
     GetMemoryRequest,
     GetMemoryResponse,
@@ -17,6 +18,7 @@ from .retrieve import (
 
 __all__ = [
     'SearchQuery',
+    'EdgesByTimeWindowQuery',
     'Message',
     'TextEpisode',
     'AddMessagesRequest',

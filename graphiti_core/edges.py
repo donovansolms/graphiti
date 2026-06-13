@@ -485,8 +485,13 @@ class EntityEdge(Edge):
         limit: int | None = None,
         uuid_cursor: str | None = None,
         with_embeddings: bool = False,
+        created_at_from: datetime | None = None,
+        created_at_to: datetime | None = None,
     ):
-        if driver.graph_operations_interface:
+        time_filtered = created_at_from is not None or created_at_to is not None
+        # The driver fast-path doesn't take the created_at window — fall through to
+        # Cypher whenever a time filter is requested so it's always honored.
+        if driver.graph_operations_interface and not time_filtered:
             try:
                 return await driver.graph_operations_interface.edge_get_by_group_ids(
                     cls, driver, group_ids, limit, uuid_cursor
@@ -495,6 +500,12 @@ class EntityEdge(Edge):
                 pass
 
         cursor_query: LiteralString = 'AND e.uuid < $uuid' if uuid_cursor else ''
+        created_from_query: LiteralString = (
+            ' AND e.created_at >= $created_at_from' if created_at_from is not None else ''
+        )
+        created_to_query: LiteralString = (
+            ' AND e.created_at <= $created_at_to' if created_at_to is not None else ''
+        )
         limit_query: LiteralString = 'LIMIT $limit' if limit is not None else ''
         with_embeddings_query: LiteralString = (
             """,
@@ -518,6 +529,8 @@ class EntityEdge(Edge):
             WHERE e.group_id IN $group_ids
             """
             + cursor_query
+            + created_from_query
+            + created_to_query
             + """
             RETURN
             """
@@ -530,12 +543,18 @@ class EntityEdge(Edge):
             group_ids=group_ids,
             uuid=uuid_cursor,
             limit=limit,
+            created_at_from=created_at_from,
+            created_at_to=created_at_to,
             routing_='r',
         )
 
         edges = [get_entity_edge_from_record(record, driver.provider) for record in records]
 
         if len(edges) == 0:
+            # A created_at-windowed query legitimately matches nothing — only the
+            # unfiltered "list this partition" call treats empty as not-found.
+            if time_filtered:
+                return []
             raise GroupsEdgesNotFoundError(group_ids)
         return edges
 

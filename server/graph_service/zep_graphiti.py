@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
@@ -49,6 +50,24 @@ class ZepGraphiti(Graphiti):
             return edge
         except EdgeNotFoundError as e:
             raise HTTPException(status_code=404, detail=e.message) from e
+
+    async def get_edges_by_created_at(
+        self,
+        group_ids: list[str],
+        created_at_from: datetime | None = None,
+        created_at_to: datetime | None = None,
+        limit: int | None = None,
+    ):
+        """List edges whose created_at falls in the window for the given group_ids
+        (non-semantic enumeration for Butler's cross_section whats_new). Returns []
+        when nothing matches — a windowed query legitimately finds no new edges."""
+        return await EntityEdge.get_by_group_ids(
+            self.driver,
+            group_ids,
+            limit=limit,
+            created_at_from=created_at_from,
+            created_at_to=created_at_to,
+        )
 
     async def delete_group(self, group_id: str):
         try:

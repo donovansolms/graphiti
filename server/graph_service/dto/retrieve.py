@@ -13,6 +13,17 @@ class SearchQuery(BaseModel):
     max_facts: int = Field(default=10, description='The maximum number of facts to retrieve')
 
 
+class EdgesByTimeWindowQuery(BaseModel):
+    """Non-semantic edge enumeration: list edges whose created_at falls in a
+    [created_at_from, created_at_to] window for the given group_ids. Used by
+    Butler's cross_section `whats_new` (what was newly recorded), not search."""
+
+    group_ids: list[str] = Field(description='The partitions (group ids) to list edges from')
+    created_at_from: datetime | None = Field(None, description='Start of the created_at window (inclusive)')
+    created_at_to: datetime | None = Field(None, description='End of the created_at window (inclusive)')
+    max_facts: int = Field(default=100, description='The maximum number of edges to return')
+
+
 class NodeResult(BaseModel):
     """The identity of one end of a fact's edge. `attributes` carries whatever
     was stamped at write time (e.g. Butler's `subject_id` / `contact_id`), so a

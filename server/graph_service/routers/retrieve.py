@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, status
 
 from graph_service.dto import (
+    EdgesByTimeWindowQuery,
     GetMemoryRequest,
     GetMemoryResponse,
     Message,
@@ -30,6 +31,21 @@ async def search(query: SearchQuery, graphiti: ZepGraphitiDep):
     return SearchResults(
         facts=facts,
     )
+
+
+@router.post('/edges-by-time-window', status_code=status.HTTP_200_OK)
+async def edges_by_time_window(query: EdgesByTimeWindowQuery, graphiti: ZepGraphitiDep):
+    """Non-semantic enumeration: edges whose created_at falls in the window for the
+    given group_ids — Butler's cross_section `whats_new` (what was newly recorded)."""
+    edges = await graphiti.get_edges_by_created_at(
+        group_ids=query.group_ids,
+        created_at_from=query.created_at_from,
+        created_at_to=query.created_at_to,
+        limit=query.max_facts,
+    )
+    nodes = await hydrate_nodes_for_edges(graphiti, edges)
+    facts = [get_fact_result_from_edge(edge, nodes) for edge in edges]
+    return SearchResults(facts=facts)
 
 
 @router.get('/entity-edge/{uuid}', status_code=status.HTTP_200_OK)
